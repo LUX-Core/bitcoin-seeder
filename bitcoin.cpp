@@ -50,13 +50,11 @@ class CNode {
     if (nHeaderStart == -1) return;
     unsigned int nSize = vSend.size() - nMessageStart;
     memcpy((char*)&vSend[nHeaderStart] + offsetof(CMessageHeader, nMessageSize), &nSize, sizeof(nSize));
-    if (vSend.GetVersion() >= 209) {
-      uint256 hash = Hash(vSend.begin() + nMessageStart, vSend.end());
-      unsigned int nChecksum = 0;
-      memcpy(&nChecksum, &hash, sizeof(nChecksum));
-      assert(nMessageStart - nHeaderStart >= offsetof(CMessageHeader, nChecksum) + sizeof(nChecksum));
-      memcpy((char*)&vSend[nHeaderStart] + offsetof(CMessageHeader, nChecksum), &nChecksum, sizeof(nChecksum));
-    }
+    uint256 hash = Hash(vSend.begin() + nMessageStart, vSend.end());
+    unsigned int nChecksum = 0;
+    memcpy(&nChecksum, &hash, sizeof(nChecksum));
+    assert(nMessageStart - nHeaderStart >= offsetof(CMessageHeader, nChecksum) + sizeof(nChecksum));
+    memcpy((char*)&vSend[nHeaderStart] + offsetof(CMessageHeader, nChecksum), &nChecksum, sizeof(nChecksum));
     nHeaderStart = -1;
     nMessageStart = -1;
   }
@@ -80,7 +78,7 @@ class CNode {
     CAddress me(CService("0.0.0.0"));
     BeginMessage("version");
     int nBestHeight = GetRequireHeight();
-    string ver = "/bitcoin-seeder:0.01/";
+    string ver = "/lux-seeder:0.01/"; // Set to LUX
     vSend << PROTOCOL_VERSION << nLocalServices << nTime << you << me << nLocalNonce << ver << nBestHeight;
     EndMessage();
   }
@@ -104,32 +102,22 @@ class CNode {
       CAddress addrFrom;
       uint64 nNonce = 1;
       vRecv >> nVersion >> you.nServices >> nTime >> addrMe;
-      if (nVersion == 10300) nVersion = 300;
-      if (nVersion >= 106 && !vRecv.empty())
-        vRecv >> addrFrom >> nNonce;
-      if (nVersion >= 106 && !vRecv.empty())
-        vRecv >> strSubVer;
-      if (nVersion >= 209 && !vRecv.empty())
-        vRecv >> nStartingHeight;
-      
-      if (nVersion >= 209) {
-        BeginMessage("verack");
-        EndMessage();
-      }
+      vRecv >> addrFrom >> nNonce;
+      vRecv >> strSubVer;
+      vRecv >> nStartingHeight;
+
+      BeginMessage("verack");
+      EndMessage();
       vSend.SetVersion(min(nVersion, PROTOCOL_VERSION));
-      if (nVersion < 209) {
-        this->vRecv.SetVersion(min(nVersion, PROTOCOL_VERSION));
-        GotVersion();
-      }
       return false;
     }
-    
+
     if (strCommand == "verack") {
       this->vRecv.SetVersion(min(nVersion, PROTOCOL_VERSION));
       GotVersion();
       return false;
     }
-    
+
     if (strCommand == "addr" && vAddr) {
       vector<CAddress> vAddrNew;
       vRecv >> vAddrNew;
@@ -171,27 +159,25 @@ class CNode {
       vector<char> vHeaderSave(vRecv.begin(), vRecv.begin() + nHeaderSize);
       CMessageHeader hdr;
       vRecv >> hdr;
-      if (!hdr.IsValid()) { 
-        // printf("%s: BAD (invalid header)\n", ToString(you).c_str());
+      if (!hdr.IsValid()) {
+       // printf("%s: BAD (invalid header)\n", ToString(you).c_str());
         ban = 100000; return true;
       }
       string strCommand = hdr.GetCommand();
       unsigned int nMessageSize = hdr.nMessageSize;
-      if (nMessageSize > MAX_SIZE) { 
-        // printf("%s: BAD (message too large)\n", ToString(you).c_str());
+      if (nMessageSize > MAX_SIZE) {
+       // printf("%s: BAD (message too large)\n", ToString(you).c_str());
         ban = 100000;
-        return true; 
+        return true;
       }
       if (nMessageSize > vRecv.size()) {
         vRecv.insert(vRecv.begin(), vHeaderSave.begin(), vHeaderSave.end());
         break;
       }
-      if (vRecv.GetVersion() >= 209) {
-        uint256 hash = Hash(vRecv.begin(), vRecv.begin() + nMessageSize);
-        unsigned int nChecksum = 0;
-        memcpy(&nChecksum, &hash, sizeof(nChecksum));
-        if (nChecksum != hdr.nChecksum) continue;
-      }
+      uint256 hash = Hash(vRecv.begin(), vRecv.begin() + nMessageSize);
+      unsigned int nChecksum = 0;
+      memcpy(&nChecksum, &hash, sizeof(nChecksum));
+      if (nChecksum != hdr.nChecksum) continue;
       CDataStream vMsg(vRecv.begin(), vRecv.begin() + nMessageSize, vRecv.nType, vRecv.nVersion);
       vRecv.ignore(nMessageSize);
       if (ProcessMessage(strCommand, vMsg))
