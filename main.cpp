@@ -32,7 +32,7 @@ public:
   const char *ipv6_proxy;
   std::set<uint64_t> filter_whitelist;
 
-  CDnsSeedOpts() : nThreads(96), nDnsThreads(4), nPort(53), mbox(NULL), ns(NULL), host(NULL), tor(NULL), fUseTestNet(false), fWipeBan(false), fWipeIgnore(false), ipv4_proxy(NULL), ipv6_proxy(NULL) {}
+  CDnsSeedOpts() : nThreads(32), nDnsThreads(4), nPort(53), mbox(NULL), ns(NULL), host(NULL), tor(NULL), fUseTestNet(false), fWipeBan(false), fWipeIgnore(false), ipv4_proxy(NULL), ipv6_proxy(NULL) {}
 
   void ParseCommandLine(int argc, char **argv) {
     static const char *help = "LUX-seeder\n"
@@ -397,13 +397,19 @@ extern "C" void* ThreadStats(void*) {
   return nullptr;
 }
 
-static const string mainnet_seeds[] = {"dnsseed.to.add", ""};
+static const string mainnet_seeds[] = {
+  "45.32.159.224", "45.76.29.67", "45.77.60.115", "45.77.227.235", "51.15.39.62",
+  "66.42.62.220", "83.166.154.80", "140.82.26.228",
+  "142.93.61.103", "144.202.65.148", "144.217.85.147", "149.28.176.151", "149.248.0.43",
+  "157.230.84.45", "167.99.6.82", "167.99.239.179", "199.247.17.33",
+  "207.148.12.197", "209.250.246.240", "209.250.250.23",
+  ""};
 static const string testnet_seeds[] = {""};
 static const string *seeds = mainnet_seeds;
 
 extern "C" void* ThreadSeeder(void*) {
   if (!fTestNet){
-    db.Add(CService("kjy2eqzk4zwi5zd3.onion", 8333), true);
+    //db.Add(CService("kjy2eqzk4zwi5zd3.onion", 8333), true);
   }
   do {
     for (int i=0; seeds[i] != ""; i++) {
