@@ -16,22 +16,41 @@
 
 #define BUFLEN 512
 
+#ifdef USE_IPV6
 #if defined IP_RECVDSTADDR
 # define DSTADDR_SOCKOPT IP_RECVDSTADDR
 # define DSTADDR_DATASIZE (CMSG_SPACE(sizeof(struct in6_addr)))
 # define dstaddr(x) (CMSG_DATA(x))
 #elif defined IPV6_PKTINFO
-struct in6_pktinfo
-  {
-    struct in6_addr ipi6_addr;	/* src/dst IPv6 address */
-    unsigned int ipi6_ifindex;	/* send/recv interface index */
-  };
+struct in6_pktinfo {
+  struct in6_addr ipi6_addr;	/* src/dst IPv6 address */
+  unsigned int ipi6_ifindex;	/* send/recv interface index */
+};
 
 # define DSTADDR_SOCKOPT IPV6_PKTINFO
 # define DSTADDR_DATASIZE (CMSG_SPACE(sizeof(struct in6_pktinfo)))
 # define dstaddr(x) (&(((struct in6_pktinfo *)(CMSG_DATA(x)))->ipi6_addr))
 #else
 # error "can't determine socket option"
+#endif
+
+#else /* IPv4 */
+#if defined IP_RECVDSTADDR
+# define DSTADDR_SOCKOPT IP_RECVDSTADDR
+# define DSTADDR_DATASIZE (CMSG_SPACE(sizeof(struct in_addr)))
+# define dstaddr(x) (CMSG_DATA(x))
+#elif defined IP_PKTINFO
+struct in_pktinfo {
+  unsigned int   ipi_ifindex;  /* Interface index */
+  struct in_addr ipi_spec_dst; /* Local address */
+  struct in_addr ipi_addr;     /* Header Destination address */
+};
+# define DSTADDR_SOCKOPT IP_PKTINFO
+# define DSTADDR_DATASIZE (CMSG_SPACE(sizeof(struct in_pktinfo)))
+# define dstaddr(x) (&(((struct in_pktinfo *)(CMSG_DATA(x)))->ipi_addr))
+#else
+# error "can't determine socket option"
+#endif
 #endif
 
 union control_data {
@@ -380,14 +399,20 @@ error:
 static int listenSocket = -1;
 
 int dnsserver(dns_opt_t *opt) {
-  struct sockaddr_in6 si_other;
   int senderSocket = -1;
+#ifdef USE_IPV6
+  struct sockaddr_in6 si_other;
   senderSocket = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
+#else
+  struct sockaddr_in si_other;
+  senderSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+#endif
   if (senderSocket == -1) 
     return -3;
 
   int replySocket;
   if (listenSocket == -1) {
+#ifdef USE_IPV6
     struct sockaddr_in6 si_me;
     if ((listenSocket=socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP))==-1) {
       listenSocket = -1;
@@ -405,6 +430,25 @@ int dnsserver(dns_opt_t *opt) {
     si_me.sin6_family = AF_INET6;
     si_me.sin6_port = htons(opt->port);
     si_me.sin6_addr = in6addr_any;
+#else
+    struct sockaddr_in si_me;
+    if ((listenSocket=socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP))==-1) {
+      listenSocket = -1;
+      return -1;
+    }
+    replySocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (replySocket == -1)
+    {
+      close(listenSocket);
+      return -1;
+    }
+    int sockopt = 1;
+    setsockopt(listenSocket, IPPROTO_IP, DSTADDR_SOCKOPT, &sockopt, sizeof sockopt);
+    memset((char *) &si_me, 0, sizeof(si_me));
+    si_me.sin_family = AF_INET;
+    si_me.sin_port = htons(opt->port);
+    si_me.sin_addr.s_addr = INADDR_ANY;
+#endif
     if (bind(listenSocket, (struct sockaddr*)&si_me, sizeof(si_me))==-1)
       return -2;
   }
